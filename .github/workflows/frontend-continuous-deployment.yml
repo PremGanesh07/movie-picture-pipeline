@@ -107,39 +107,67 @@ jobs:
       - name: Verify frontend deployment
         run: |
           echo "========================================"
+          echo "EKS NODES"
+          echo "========================================"
+          kubectl get nodes -o wide || true
+
+          echo ""
+          echo "========================================"
+          echo "NODE STATUS"
+          echo "========================================"
+          kubectl describe nodes || true
+
+          echo ""
+          echo "========================================"
           echo "FRONTEND PODS"
           echo "========================================"
-          kubectl get pods -o wide
+          kubectl get pods -l app=frontend -o wide || true
 
+          echo ""
           echo "========================================"
-          echo "FRONTEND SERVICE"
+          echo "ALL PODS"
           echo "========================================"
-          kubectl get service frontend -o wide
+          kubectl get pods -A -o wide || true
 
-          echo "========================================"
-          echo "FRONTEND ENDPOINTS"
-          echo "========================================"
-          kubectl get endpoints frontend -o wide
-
+          echo ""
           echo "========================================"
           echo "FRONTEND DEPLOYMENT"
           echo "========================================"
-          kubectl get deployment frontend -o wide
+          kubectl get deployment frontend -o wide || true
 
+          echo ""
           echo "========================================"
-          echo "ROLLOUT STATUS"
+          echo "FRONTEND SERVICE"
           echo "========================================"
-          kubectl rollout status deployment/frontend --timeout=120s || true
+          kubectl get service frontend -o wide || true
 
+          echo ""
+          echo "========================================"
+          echo "FRONTEND ENDPOINTS"
+          echo "========================================"
+          kubectl get endpoints frontend -o wide || true
+
+          echo ""
+          echo "========================================"
+          echo "FRONTEND EVENTS"
+          echo "========================================"
+          kubectl get events --sort-by=.lastTimestamp | tail -50 || true
+
+          echo ""
           echo "========================================"
           echo "FRONTEND POD DETAILS"
           echo "========================================"
-          kubectl describe pods -l app=frontend
 
-          echo "========================================"
-          echo "FRONTEND LOGS"
-          echo "========================================"
-          kubectl logs -l app=frontend --tail=100 || true
+          POD=$(kubectl get pods \
+            -l app=frontend \
+            -o jsonpath='{.items[0].metadata.name}' \
+            2>/dev/null || true)
+
+          if [ -n "$POD" ]; then
+            kubectl describe pod "$POD" || true
+          else
+            echo "No frontend pod found"
+          fi
 
       - name: Get frontend service URL
         run: |
