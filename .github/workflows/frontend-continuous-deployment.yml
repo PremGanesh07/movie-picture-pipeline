@@ -88,6 +88,57 @@ jobs:
             --region us-east-1 \
             --name cluster
 
+      - name: Check EKS node groups
+        run: |
+          echo "========================================"
+          echo "EKS CLUSTER"
+          echo "========================================"
+
+          aws eks describe-cluster \
+            --region us-east-1 \
+            --name cluster \
+            --query 'cluster.status' \
+            --output text
+
+          echo ""
+          echo "========================================"
+          echo "EKS NODE GROUPS"
+          echo "========================================"
+
+          aws eks list-nodegroups \
+            --region us-east-1 \
+            --cluster-name cluster \
+            --output table
+
+          echo ""
+          echo "========================================"
+          echo "NODE GROUP DETAILS"
+          echo "========================================"
+
+          NODEGROUPS=$(aws eks list-nodegroups \
+            --region us-east-1 \
+            --cluster-name cluster \
+            --query 'nodegroups[]' \
+            --output text)
+
+          if [ -z "$NODEGROUPS" ]; then
+            echo "NO EKS NODE GROUPS FOUND"
+          else
+            for NODEGROUP in $NODEGROUPS; do
+              echo ""
+              echo "----------------------------------------"
+              echo "NODE GROUP: $NODEGROUP"
+              echo "----------------------------------------"
+
+              aws eks describe-nodegroup \
+                --region us-east-1 \
+                --cluster-name cluster \
+                --nodegroup-name "$NODEGROUP" \
+                --query 'nodegroup.{Status:status,Desired:scalingConfig.desiredSize,Min:scalingConfig.minSize,Max:scalingConfig.maxSize,InstanceTypes:instanceTypes,Health:health}' \
+                --output yaml
+            done
+          fi
+
       - name: Install Kustomize
         run: |
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
@@ -106,18 +157,6 @@ jobs:
 
       - name: Verify frontend deployment
         run: |
-          echo "========================================"
-          echo "EKS NODES"
-          echo "========================================"
-          kubectl get nodes -o wide || true
-
-          echo ""
-          echo "========================================"
-          echo "NODE STATUS"
-          echo "========================================"
-          kubectl describe nodes || true
-
-          echo ""
           echo "========================================"
           echo "FRONTEND PODS"
           echo "========================================"
@@ -151,7 +190,8 @@ jobs:
           echo "========================================"
           echo "FRONTEND EVENTS"
           echo "========================================"
-          kubectl get events --sort-by=.lastTimestamp | tail -50 || true
+          kubectl get events \
+            --sort-by=.lastTimestamp | tail -50 || true
 
           echo ""
           echo "========================================"
@@ -169,6 +209,28 @@ jobs:
             echo "No frontend pod found"
           fi
 
+          echo ""
+          echo "========================================"
+          echo "FRONTEND LOGS"
+          echo "========================================"
+
+          if [ -n "$POD" ]; then
+            kubectl logs "$POD" --tail=100 || true
+          else
+            echo "No frontend logs available"
+          fi
+
       - name: Get frontend service URL
         run: |
+          echo "========================================"
+          echo "FRONTEND SERVICE URL"
+          echo "========================================"
+
           kubectl get service frontend -o wide
+
+          echo ""
+          echo "External URL:"
+          kubectl get service frontend \
+            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+
+          echo ""
