@@ -6,14 +6,17 @@ on:
       - main
     paths:
       - "starter/frontend/**"
+      - ".github/workflows/frontend-continuous-deployment.yml"
   workflow_dispatch:
 
 jobs:
   lint:
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: starter/frontend
+
     steps:
       - uses: actions/checkout@v4
 
@@ -26,9 +29,11 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: starter/frontend
+
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +47,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: [lint, test]
+
     steps:
       - uses: actions/checkout@v4
 
@@ -66,6 +72,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
+
     steps:
       - uses: actions/checkout@v4
 
@@ -76,7 +83,10 @@ jobs:
           aws-region: us-east-1
 
       - name: Configure kubectl
-        run: aws eks update-kubeconfig --region us-east-1 --name cluster
+        run: |
+          aws eks update-kubeconfig \
+            --region us-east-1 \
+            --name cluster
 
       - name: Install Kustomize
         run: |
@@ -85,11 +95,52 @@ jobs:
 
       - name: Set frontend image
         working-directory: starter/frontend/k8s
-        run: kustomize edit set image frontend=451089618050.dkr.ecr.us-east-1.amazonaws.com/frontend=${{ github.sha }}
+        run: |
+          kustomize edit set image \
+            frontend=451089618050.dkr.ecr.us-east-1.amazonaws.com/frontend=${{ github.sha }}
 
       - name: Deploy frontend
         working-directory: starter/frontend/k8s
-        run: kubectl apply -k .
+        run: |
+          kubectl apply -k .
+
+      - name: Verify frontend deployment
+        run: |
+          echo "========================================"
+          echo "FRONTEND PODS"
+          echo "========================================"
+          kubectl get pods -o wide
+
+          echo "========================================"
+          echo "FRONTEND SERVICE"
+          echo "========================================"
+          kubectl get service frontend -o wide
+
+          echo "========================================"
+          echo "FRONTEND ENDPOINTS"
+          echo "========================================"
+          kubectl get endpoints frontend -o wide
+
+          echo "========================================"
+          echo "FRONTEND DEPLOYMENT"
+          echo "========================================"
+          kubectl get deployment frontend -o wide
+
+          echo "========================================"
+          echo "ROLLOUT STATUS"
+          echo "========================================"
+          kubectl rollout status deployment/frontend --timeout=120s || true
+
+          echo "========================================"
+          echo "FRONTEND POD DETAILS"
+          echo "========================================"
+          kubectl describe pods -l app=frontend
+
+          echo "========================================"
+          echo "FRONTEND LOGS"
+          echo "========================================"
+          kubectl logs -l app=frontend --tail=100 || true
 
       - name: Get frontend service URL
-        run: kubectl get service frontend -o wide
+        run: |
+          kubectl get service frontend -o wide
